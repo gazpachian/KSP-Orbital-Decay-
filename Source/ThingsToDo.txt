@@ -1,0 +1,2 @@
+* Alter decay time to show an exponential relationship instead.
+* Fix decay time formatting
