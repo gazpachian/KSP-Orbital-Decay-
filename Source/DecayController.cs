@@ -36,12 +36,12 @@ namespace WhitecatIndustries
 		public const double lambda = 0.000000000133913;
 		public static double decayValue;
 		public static double maxDecayValue;
-		public static bool VesselDied = false;
+		public static bool vesselDied = false;
 		public static float estTimeToDeorbit;
 
 		public static void CalculateOrbit (Vessel vessel, Orbit oldOrbit, OrbitDriver driver)
 		{
-			VesselDied = false;
+			vesselDied = false;
 
 			if (!VesselData.Message.ContainsKey (vessel.id)) {
 				VesselData.Message.Add (vessel.id, false);
@@ -87,7 +87,7 @@ namespace WhitecatIndustries
 				}
 			}
     
-			if (VesselDied == false) {         // Just Incase the vessel is destroyed part way though the check.
+			if (vesselDied == false) {         // Just Incase the vessel is destroyed part way though the check.
 				if (vessel.orbitDriver.orbit.referenceBody.GetInstanceID () != 0 || vessel.orbitDriver.orbit.semiMajorAxis > vessel.orbitDriver.orbit.referenceBody.Radius + 5) {
 					SetNewOrbit (driver, oldOrbit);
 				}
@@ -105,7 +105,7 @@ namespace WhitecatIndustries
 				}
 
 				if (vessel.orbitDriver.orbit.semiMajorAxis < vessel.orbitDriver.orbit.referenceBody.Radius + vessel.orbitDriver.referenceBody.atmosphereDepth + 5) {
-					VesselDied = true;       
+					vesselDied = true;       
 				}
 			} else { // Moon Smaller Problem
 				if (vessel.orbitDriver.orbit.semiMajorAxis < vessel.orbitDriver.orbit.referenceBody.Radius + 5000) {
@@ -119,12 +119,12 @@ namespace WhitecatIndustries
 				}
 
 				if (vessel.orbitDriver.orbit.semiMajorAxis < vessel.orbitDriver.orbit.referenceBody.Radius + 100) {
-					VesselDied = true; 
+					vesselDied = true; 
 				}
 
 			}
 
-			if (VesselDied == false) {
+			if (vesselDied == false) {
 				vessel.orbitDriver.pos = vessel.orbit.pos.xzy;
 				vessel.orbitDriver.vel = vessel.orbit.vel;
 				var newBody = vessel.orbitDriver.orbit.referenceBody;
@@ -132,9 +132,7 @@ namespace WhitecatIndustries
 					var evnt = new GameEvents.HostedFromToAction<Vessel, CelestialBody> (vessel, oldBody, newBody);
 					GameEvents.onVesselSOIChanged.Fire (evnt);
 				}
-			}
-
-			if (VesselDied == true) {
+			} else {
 				vessel.Die ();
 				VesselData.CanStationKeep.Remove (vessel.id);
 				VesselData.DecayTimes.Remove (vessel.id);
@@ -166,23 +164,11 @@ namespace WhitecatIndustries
 
 		public static double DecayRate (Orbit orbit)
 		{
-			double MaxDecayInfluence = orbit.referenceBody.Radius * 10;
-			double AtmosphereMultiplier;
-
-			if (orbit.referenceBody.atmosphere) {
-				AtmosphereMultiplier = orbit.referenceBody.atmospherePressureSeaLevel / 101.325;
-			} else {
-				AtmosphereMultiplier = 0.5;
-			}
-
-			if (orbit.semiMajorAxis + 50 < MaxDecayInfluence) {
-				double Lambda = 0.000000000133913 * UI.DifficultySetting;
-				double Sigma = MaxDecayInfluence - orbit.altitude;
-				decayValue = (double)TimeWarp.CurrentRate * Sigma * orbit.referenceBody.GeeASL * AtmosphereMultiplier * Lambda;
-			} else {
-				decayValue = 0;
-			}
-			return decayValue;
+			var parent = orbit.referenceBody;
+			double maxDecayInfluence = parent.Radius * 10;
+			double atmoMult = parent.atmosphere ? parent.atmospherePressureSeaLevel / 101.325 : 0.5;
+			double sigma = maxDecayInfluence - orbit.altitude;
+			return orbit.semiMajorAxis + 50 < maxDecayInfluence ? (double)TimeWarp.CurrentRate * sigma * parent.GeeASL * atmoMult * lambda : 0.0;
 		}
 
 		public static void StationKeeping (OrbitDriver driver, Vessel vessel)
