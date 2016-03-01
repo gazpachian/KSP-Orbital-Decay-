@@ -84,10 +84,8 @@ namespace WhitecatIndustries
 				VesselData.DecayTimes.Add (vessel.id, 0.5f);
 			}
     
-			if (vesselDied == false) {         // Just Incase the vessel is destroyed part way though the check. TODO : Check docs to see if that's even possible. It's all single threaded, no?
-				if (vessel.orbitDriver.orbit.referenceBody.GetInstanceID () != 0 || vessel.orbitDriver.orbit.semiMajorAxis > vessel.orbitDriver.orbit.referenceBody.Radius + 5) {
-					SetNewOrbit (driver, oldOrbit, decayValue);
-				}
+			if (vessel.orbitDriver.orbit.referenceBody.GetInstanceID () != 0 || oldOrbit.semiMajorAxis > oldBody.Radius + 5) {
+				SetNewOrbit (driver, decayValue);
 			}
 
 			if (vessel.orbitDriver.orbit.referenceBody.atmosphere) { // Big problem ( Jool, Eve, Duna, Kerbin, Laythe)
@@ -101,9 +99,6 @@ namespace WhitecatIndustries
 					VesselData.Message.Add (vessel.id, true);
 				}
 
-				if (vessel.orbitDriver.orbit.semiMajorAxis < vessel.orbitDriver.orbit.referenceBody.Radius + vessel.orbitDriver.referenceBody.atmosphereDepth + 5) {
-					vesselDied = true;       
-				}
 			} else { // Moon Smaller Problem
 				if (vessel.orbitDriver.orbit.semiMajorAxis < vessel.orbitDriver.orbit.referenceBody.Radius + 5000) {
 					FlightDriver.SetPause (true);
@@ -114,11 +109,9 @@ namespace WhitecatIndustries
 					VesselData.Message.Remove (vessel.id);
 					VesselData.Message.Add (vessel.id, true);
 				}
-
-				if (vessel.orbitDriver.orbit.semiMajorAxis < vessel.orbitDriver.orbit.referenceBody.Radius + 100) {
-					vesselDied = true; 
-				}
-
+			}
+			if (vessel.orbitDriver.orbit.semiMajorAxis < vessel.orbitDriver.orbit.referenceBody.Radius + 100) {
+				vesselDied = true; 
 			}
 
 			if (vesselDied == false) {
@@ -127,10 +120,12 @@ namespace WhitecatIndustries
 				var newBody = vessel.orbitDriver.orbit.referenceBody;
 				if (newBody != oldBody) {
 					var e = new GameEvents.HostedFromToAction<Vessel, CelestialBody> (vessel, oldBody, newBody);
-					GameEvents.onVesselSOIChanged.Fire(e);
+					GameEvents.onVesselSOIChanged.Fire (e);
 				}
 			} else {
 				vessel.Die ();
+				print ("Notice: " + vessel.name + " was destroyed on re-entry above " + oldOrbit.referenceBody.name + ".");
+				ScreenMessages.PostScreenMessage ("Notice: " + vessel.name + " was destroyed on re-entry above " + oldOrbit.referenceBody.name + ".");
 				VesselData.CanStationKeep.Remove (vessel.id);
 				VesselData.DecayTimes.Remove (vessel.id);
 				VesselData.DisplayedDecayTimes.Remove (vessel);
@@ -139,17 +134,10 @@ namespace WhitecatIndustries
 			}
 		}
 
-		public static void SetNewOrbit (OrbitDriver driver, Orbit oldOrbit, double decayValue)
+		public static void SetNewOrbit (OrbitDriver driver, double decayValue)
 		{
 			var orbit = driver.orbit;
-			orbit.inclination = driver.orbit.inclination;
-			orbit.eccentricity = driver.orbit.eccentricity;
-			orbit.semiMajorAxis = (driver.orbit.semiMajorAxis - decayValue);
-			orbit.LAN = driver.orbit.LAN;
-			orbit.argumentOfPeriapsis = driver.orbit.argumentOfPeriapsis;
-			orbit.meanAnomalyAtEpoch = driver.orbit.meanAnomalyAtEpoch;
-			orbit.epoch = driver.orbit.epoch;
-			orbit.referenceBody = driver.orbit.referenceBody;
+			orbit.semiMajorAxis -= decayValue;
 			orbit.Init ();
 			orbit.UpdateFromUT (Planetarium.GetUniversalTime ());
 			if (orbit.referenceBody != driver.orbit.referenceBody) {
