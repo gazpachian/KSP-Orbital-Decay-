@@ -49,27 +49,26 @@ namespace WhitecatIndustries
 			} else {
 				VesselData.Message.TryGetValue (vessel.id, out VesselData.DisplayedMessage);
 			}
+			var oldBody = oldOrbit.referenceBody;
+			var parentG_ASL = oldBody.GeeASL;
+			var atmoMult = oldBody.atmosphere ? oldBody.atmospherePressureSeaLevel / 101.325 : 0.5;
+			var atmoDepth = oldBody.atmosphere ? oldBody.atmosphereDepth : 100; 
+			var maxDecayInfluence = oldBody.Radius * 10.0;
 
 			vessel.GoOnRails ();
 
-			var oldBody = oldOrbit.referenceBody;
-           
-			// The ISS decays at about 2km/month = 2000/30*24*60*60 == 7.7x10^-4 m/s 
-
-			double parentG_ASL = oldBody.GeeASL;
-			double atmoMult = oldBody.atmosphere ? oldBody.atmospherePressureSeaLevel / 101.325 : 0.5;
-			double atmoDepth = oldBody.atmosphere ? oldBody.atmosphereDepth : 100; 
-			double MaxDecayInfluence = oldBody.Radius * 10;
-
-			if (oldOrbit.semiMajorAxis + 50 < MaxDecayInfluence) {
-				double Lambda = 0.000000000133913 * UI.DifficultySetting;                           //0.000000000133913;
-				double Sigma = MaxDecayInfluence - vessel.orbitDriver.orbit.altitude;
-				decayValue = (double)TimeWarp.CurrentRate * Sigma * parentG_ASL * atmoMult * Lambda;
+			var currentOrbit = vessel.orbitDriver.orbit;
+			// The ISS decays at about 2km/month = 2000/30*24*60*60 == 7.7x10^-4 m/s
+			// The default lambda is scaled to achieve numbers similar to this. Maybe.
+			if (oldOrbit.semiMajorAxis + 50 < maxDecayInfluence) { // TODO : use the method decayRate instead, right? Why have to copies of basically the same code?
+				double scaledLambda = lambda * UI.DifficultySetting;
+				double sigma = maxDecayInfluence - currentOrbit.altitude;
+				decayValue = (double)TimeWarp.CurrentRate * sigma * parentG_ASL * atmoMult * scaledLambda;
 
 				if (oldOrbit.PeA < atmoDepth) { //TODO : Check the math here
 					decayValue = decayValue * (Math.Pow (Math.E, atmoDepth - oldOrbit.PeA)); // Have it increase alot more as we enter the hard atmosphere
 				}
-				maxDecayValue = ((oldBody.Radius + atmoDepth) * parentG_ASL * atmoMult * Lambda);
+				maxDecayValue = ((oldBody.Radius + atmoDepth) * parentG_ASL * atmoMult * scaledLambda);
 				// TODO : This should be fixed to do some integral calculation, but maybe leave it until the exponential falloff of drag has been implemented
 				estTimeToDeorbit = ((float)(oldOrbit.semiMajorAxis - (float)oldBody.atmosphereDepth)) / (float)maxDecayValue; 
 				if (VesselData.DecayTimes.ContainsKey (vessel.id)) {
@@ -81,15 +80,13 @@ namespace WhitecatIndustries
 
 				if (VesselData.DecayTimes.ContainsKey (vessel.id)) {
 					VesselData.DecayTimes.Remove (vessel.id);
-					VesselData.DecayTimes.Add (vessel.id, 0.5f);
-				} else {
-					VesselData.DecayTimes.Add (vessel.id, 0.5f);
 				}
+				VesselData.DecayTimes.Add (vessel.id, 0.5f);
 			}
     
-			if (vesselDied == false) {         // Just Incase the vessel is destroyed part way though the check.
+			if (vesselDied == false) {         // Just Incase the vessel is destroyed part way though the check. TODO : Check docs to see if that's even possible. It's all single threaded, no?
 				if (vessel.orbitDriver.orbit.referenceBody.GetInstanceID () != 0 || vessel.orbitDriver.orbit.semiMajorAxis > vessel.orbitDriver.orbit.referenceBody.Radius + 5) {
-					SetNewOrbit (driver, oldOrbit);
+					SetNewOrbit (driver, oldOrbit, decayValue);
 				}
 			}
 
@@ -129,8 +126,8 @@ namespace WhitecatIndustries
 				vessel.orbitDriver.vel = vessel.orbit.vel;
 				var newBody = vessel.orbitDriver.orbit.referenceBody;
 				if (newBody != oldBody) {
-					var evnt = new GameEvents.HostedFromToAction<Vessel, CelestialBody> (vessel, oldBody, newBody);
-					GameEvents.onVesselSOIChanged.Fire (evnt);
+					var e = new GameEvents.HostedFromToAction<Vessel, CelestialBody> (vessel, oldBody, newBody);
+					GameEvents.onVesselSOIChanged.Fire(e);
 				}
 			} else {
 				vessel.Die ();
@@ -142,7 +139,7 @@ namespace WhitecatIndustries
 			}
 		}
 
-		public static void SetNewOrbit (OrbitDriver driver, Orbit oldOrbit)
+		public static void SetNewOrbit (OrbitDriver driver, Orbit oldOrbit, double decayValue)
 		{
 			var orbit = driver.orbit;
 			orbit.inclination = driver.orbit.inclination;
@@ -162,7 +159,7 @@ namespace WhitecatIndustries
             
 		}
 
-		public static double DecayRate (Orbit orbit)
+		public static double decayRate (Orbit orbit)
 		{
 			var parent = orbit.referenceBody;
 			double maxDecayInfluence = parent.Radius * 10;
